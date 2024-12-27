@@ -1,0 +1,120 @@
+From 2b0e80125ce3ec386b2d0868b85ff999e5cbd1b8 Mon Sep 17 00:00:00 2001
+From: schwienernitzel <pfelix0803@gmail.com>
+Date: Fri, 27 Dec 2024 17:21:11 +0000
+Subject: [PATCH] Windowmanager set landscape mode by default
+
+Change-Id: I790c344c1a4c0b790317099a4eede99361061648
+Signed-off-by: schwienernitzel <pfelix0803@gmail.com>
+---
+ cmds/bootanimation/BootAnimation.cpp                | 13 +++++++++++++
+ cmds/bootanimation/BootAnimation.h                  |  7 +++++++
+ .../android/server/policy/PhoneWindowManager.java   |  8 ++++++--
+ .../java/com/android/server/wm/DisplayContent.java  |  3 ++-
+ 4 files changed, 28 insertions(+), 3 deletions(-)
+
+diff --git a/cmds/bootanimation/BootAnimation.cpp b/cmds/bootanimation/BootAnimation.cpp
+index 6526123a..71755994 100644
+--- a/cmds/bootanimation/BootAnimation.cpp
++++ b/cmds/bootanimation/BootAnimation.cpp
+@@ -256,6 +256,19 @@ status_t BootAnimation::readyToRun() {
+     if (status)
+         return -1;
+ 
++    char value[PROPERTY_VALUE_MAX];
++    property_get("persist.panel.orientation", value, "0");
++    int orient = atoi(value) / 90;
++
++    if(orient == eOrientation90 || orient == eOrientation270) {
++        int temp = dinfo.h;
++        dinfo.h = dinfo.w;
++        dinfo.w = temp;
++    }
++
++    Rect destRect(dinfo.w, dinfo.h);
++    mSession->setDisplayProjection(dtoken, orient, destRect, destRect);
++
+     // create the native surface
+     sp<SurfaceControl> control = session()->createSurface(String8("BootAnimation"),
+             dinfo.w, dinfo.h, PIXEL_FORMAT_RGB_565);
+diff --git a/cmds/bootanimation/BootAnimation.h b/cmds/bootanimation/BootAnimation.h
+index 56e13152..d5192107 100644
+--- a/cmds/bootanimation/BootAnimation.h
++++ b/cmds/bootanimation/BootAnimation.h
+@@ -39,6 +39,13 @@ class SurfaceControl;
+ class BootAnimation : public Thread, public IBinder::DeathRecipient
+ {
+ public:
++    enum {
++        eOrientationDefault     = 0,
++        eOrientation90          = 1,
++        eOrientation180         = 2,
++        eOrientation270         = 3,
++    };
++
+     struct Texture {
+         GLint   w;
+         GLint   h;
+diff --git a/services/core/java/com/android/server/policy/PhoneWindowManager.java b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+index dcaa30ff..e0e00ba5 100644
+--- a/services/core/java/com/android/server/policy/PhoneWindowManager.java
++++ b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+@@ -820,6 +820,9 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+     int mOverscanRight = 0;
+     int mOverscanBottom = 0;
+ 
++    // Panel Orientation default portrait
++    int mPanelOrientation = Surface.ROTATION_0;
++
+     // Allowed theater mode wake actions
+     private boolean mAllowTheaterModeWakeFromKey;
+     private boolean mAllowTheaterModeWakeFromPowerKey;
+@@ -2556,6 +2559,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+             return;
+         }
+         mDisplay = display;
++        mPanelOrientation = SystemProperties.getInt("persist.panel.orientation", 0) / 90;
+ 
+         final Resources res = mContext.getResources();
+         int shortSize, longSize;
+@@ -7862,7 +7866,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+         }
+ 
+         if (mForceDefaultOrientation) {
+-            return Surface.ROTATION_0;
++            return mPanelOrientation;
+         }
+ 
+         synchronized (mLock) {
+@@ -8019,7 +8023,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+                     if (preferredRotation >= 0) {
+                         return preferredRotation;
+                     }
+-                    return Surface.ROTATION_0;
++                    return mPanelOrientation;
+             }
+         }
+     }
+diff --git a/services/core/java/com/android/server/wm/DisplayContent.java b/services/core/java/com/android/server/wm/DisplayContent.java
+index ba99f38f..b642ae5e 100644
+--- a/services/core/java/com/android/server/wm/DisplayContent.java
++++ b/services/core/java/com/android/server/wm/DisplayContent.java
+@@ -116,6 +116,7 @@ import android.os.Handler;
+ import android.os.IBinder;
+ import android.os.RemoteException;
+ import android.os.SystemClock;
++import android.os.SystemProperties;
+ import android.util.DisplayMetrics;
+ import android.util.MutableBoolean;
+ import android.util.Slog;
+@@ -227,7 +228,7 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
+      *
+      * @see #updateRotationUnchecked(boolean)
+      */
+-    private int mRotation = 0;
++    private int mRotation = SystemProperties.getInt("persist.panel.orientation", Surface.ROTATION_0) / 90;
+ 
+     /**
+      * Last applied orientation of the display.
+-- 
+2.25.1
+
